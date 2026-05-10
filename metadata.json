@@ -1,0 +1,6 @@
+{
+  "name": "ER Triage Manager",
+  "description": "A high-performance emergency room management system featuring design patterns like Builder, Decorator, Facade, and Observer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
