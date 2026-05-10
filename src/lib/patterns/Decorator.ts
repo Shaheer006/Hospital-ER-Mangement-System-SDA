@@ -10,7 +10,7 @@ export function decorateBed(bed: Bed, equipmentKey: string, inventoryItems: Inve
   return {
     ...bed,
     decorators: [...bed.decorators, equipmentKey],
-    billingTotal: (bed.billingTotal || bed.billingBase) + eq.dailyCost,
+    billingTotal: (Number(bed.billingTotal) || Number(bed.billingBase)) + eq.dailyCost,
   };
 }
 
@@ -20,12 +20,12 @@ export function removeDecorator(bed: Bed, equipmentKey: string, inventoryItems: 
   return {
     ...bed,
     decorators: bed.decorators.filter(d => d !== equipmentKey),
-    billingTotal: (bed.billingTotal || bed.billingBase) - eq.dailyCost,
+    billingTotal: (Number(bed.billingTotal) || Number(bed.billingBase)) - eq.dailyCost,
   };
 }
 
 export function getBedBilling(bed: Bed): number {
-  const base = bed.billingBase || 500;
+  const base = Number(bed.billingBase) || 500;  // coerce from string
   const extra = (bed.decorators || []).reduce((sum, key) => {
     const eq = EQUIPMENT_CATALOG.find(e => e.key === key);
     return sum + (eq ? eq.dailyCost : 0);

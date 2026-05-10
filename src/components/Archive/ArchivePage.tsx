@@ -7,10 +7,8 @@ interface ArchivePageProps {
 }
 
 export function ArchivePage({ archive }: ArchivePageProps) {
-  // THE FIX: Absolute guarantee archive is an array before we do math on it.
   const safeArchive = Array.isArray(archive) ? archive : [];
 
-  // THE FIX: Checks both 'billing' and 'totalBilledAmount' depending on what the DB sent
   const totalBilling = safeArchive.reduce((sum, r: any) => sum + (Number(r.billing || r.totalBilledAmount) || 0), 0);
   const avgBilling = safeArchive.length ? Math.round(totalBilling / safeArchive.length) : 0;
 
@@ -31,7 +29,7 @@ export function ArchivePage({ archive }: ArchivePageProps) {
         </div>
         <div className="card" style={{ flex: 1 }}>
           <div className="card-title">Express Admits</div>
-          <div className="card-value red">{safeArchive.filter(r => r.type === "express").length}</div>
+          <div className="card-value red">{safeArchive.filter(r => (r as any).type === "express").length}</div>
         </div>
       </div>
 
@@ -56,35 +54,66 @@ export function ArchivePage({ archive }: ArchivePageProps) {
                 <tr><td colSpan={9} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>No archived records yet</td></tr>
               )}
               {[...safeArchive].reverse().map((r: any, i) => {
-                // THE FIX: Safely parse decorators even if it's missing or a weird string
-                let decs = [];
-                if (Array.isArray(r.decorators)) decs = r.decorators;
-                else if (typeof r.decorators === 'string') {
-                  try { decs = JSON.parse(r.decorators) || []; } catch (e) { decs = []; }
+                // Guard: skip anything that isn't a proper archive record
+                if (typeof r !== "object" || r === null) return null;
+                if (!r.complaint && !r.dischargedAt && !r.name) return null;
+
+                // Safe parse decorators
+                let decs: string[] = [];
+                if (Array.isArray(r.decorators)) {
+                  decs = r.decorators;
+                } else if (typeof r.decorators === "string") {
+                  try {
+                    const parsed = JSON.parse(r.decorators);
+                    if (Array.isArray(parsed)) decs = parsed;
+                    else if (typeof parsed === "string") {
+                      const parsed2 = JSON.parse(parsed);
+                      if (Array.isArray(parsed2)) decs = parsed2;
+                    }
+                  } catch {
+                    decs = [];
+                  }
                 }
 
+                // Safe triage level
+                const triageLevel = Number(r.triageLevel);
+                const safeTriageLevel = (triageLevel >= 1 && triageLevel <= 5) ? triageLevel : 3;
+
+                // Safe string fields
+                const name = typeof r.name === "string" ? r.name : String(r.name ?? "Unknown");
+                const age = typeof r.age === "number" ? r.age : Number(r.age) || "--";
+                const gender = typeof r.gender === "string" ? r.gender : "--";
+                const complaint = typeof r.complaint === "string" ? r.complaint : "N/A";
+                const admittedAt = typeof r.admittedAt === "string" ? r.admittedAt.slice(0, 20) : "—";
+                const dischargedAt = typeof r.dischargedAt === "string" ? r.dischargedAt.slice(0, 20) : "—";
+                const billing = Number(r.billing || r.totalBilledAmount) || 0;
+                const recordType = typeof r.type === "string" ? r.type : "standard";
+
                 return (
-                  <tr key={r.id || r.recordId || i} className="archive-row">
-                    {/* THE FIX: Fallback values for every single field so it can never crash */}
-                    <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>{r.name || r.patientId || "Unknown"}</td>
-                    <td className="mono">{r.age || "--"} / {r.gender || "--"}</td>
-                    <td>{r.complaint || "N/A"}</td>
-                    <td>{triageBadge(Number(r.triageLevel) || 3)}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{r.admittedAt?.toString?.()?.slice?.(0, 20) || "—"}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{r.dischargedAt?.toString?.()?.slice?.(0, 20) || "—"}</td>
+                  <tr key={r.id || i} className="archive-row">
+                    <td style={{ color: "var(--text-primary)", fontWeight: 500 }}>{name}</td>
+                    <td className="mono">{age} / {gender}</td>
+                    <td>{complaint}</td>
+                    <td>{triageBadge(safeTriageLevel)}</td>
+                    <td className="mono" style={{ fontSize: 11 }}>{admittedAt}</td>
+                    <td className="mono" style={{ fontSize: 11 }}>{dischargedAt}</td>
                     <td>
                       {decs.length === 0
                         ? <span style={{ color: "var(--text-muted)", fontSize: 11 }}>None</span>
-                        : decs.map((d: any) => {
-                          const eq = EQUIPMENT_CATALOG?.find(e => e.key === d);
-                          return <span key={d} className="equip-tag" style={{ marginRight: 4 }}>{eq?.icon || "📦"} {eq?.label || d}</span>;
+                        : decs.map((d: string) => {
+                          const eq = EQUIPMENT_CATALOG.find(e => e.key === d);
+                          return (
+                            <span key={d} className="equip-tag" style={{ marginRight: 4 }}>
+                              {eq?.icon || "📦"} {eq?.label || d}
+                            </span>
+                          );
                         })}
                     </td>
                     <td style={{ color: "var(--green)", fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                      ${(Number(r.billing || r.totalBilledAmount) || 0).toLocaleString()}
+                      ${billing.toLocaleString()}
                     </td>
                     <td>
-                      {r.type === "express"
+                      {recordType === "express"
                         ? <span className="triage-badge t1">EXPRESS</span>
                         : <span className="discharge-badge">STANDARD</span>}
                     </td>

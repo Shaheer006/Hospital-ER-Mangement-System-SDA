@@ -5,7 +5,7 @@ const app = express();
 
 app.use(cors());
 // Increased limit just in case your database gets very large
-app.use(express.json({ limit: '10mb' })); 
+app.use(express.json({ limit: '10mb' }));
 
 const db = new sqlite3.Database('./database.sqlite', (err) => {
   if (err) console.error(err.message);
@@ -14,10 +14,10 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
 
 // Helper function: Safely fetch tables even if they haven't been created yet
 const getTable = (tableName) => new Promise((resolve) => {
-    db.all(`SELECT * FROM ${tableName}`, (err, rows) => {
-        if (err) resolve(null); // Table doesn't exist yet, return null
-        else resolve(rows);
-    });
+  db.all(`SELECT * FROM ${tableName}`, (err, rows) => {
+    if (err) resolve(null); // Table doesn't exist yet, return null
+    else resolve(rows);
+  });
 });
 
 // 1. Send all data to React on startup
@@ -34,28 +34,29 @@ app.get('/api/sync', async (req, res) => {
 // 2. The Self-Healing Schema Generator
 app.post('/api/save-state', (req, res) => {
   const { table, data } = req.body;
-  if (!data || data.length === 0) return res.sendStatus(200);
+  const allowed = ['beds', 'patients', 'inventory', 'archive'];
+  if (!allowed.includes(table) || !data || data.length === 0) return res.sendStatus(200);
 
   db.serialize(() => {
-    // Drop the old rigid table
-    db.run(`DROP TABLE IF EXISTS ${table}`);
+    db.run('BEGIN TRANSACTION');
 
-    // Dynamically create a new table based on the exact properties React just sent
+    // Ensure table exists with correct columns (only creates if missing)
     const keys = Object.keys(data[0]);
     const columnDefs = keys.map(k => `"${k}" TEXT`).join(', ');
+    db.run(`CREATE TABLE IF NOT EXISTS ${table} (${columnDefs})`);
 
-    db.run(`CREATE TABLE ${table} (${columnDefs})`, (err) => {
-       if (err) return res.status(500).send(err.message);
+    // Clear and repopulate atomically
+    db.run(`DELETE FROM ${table}`);
+    const placeholders = keys.map(() => '?').join(', ');
+    const stmt = db.prepare(
+      `INSERT INTO ${table} (${keys.map(k => `"${k}"`).join(',')}) VALUES (${placeholders})`
+    );
+    data.forEach(row => stmt.run(Object.values(row)));
+    stmt.finalize();
 
-       // Insert the data into the freshly generated table
-       const placeholders = keys.map(() => '?').join(', ');
-       const stmt = db.prepare(`INSERT INTO ${table} (${keys.map(k=>`"${k}"`).join(',')}) VALUES (${placeholders})`);
-
-       data.forEach(row => {
-           stmt.run(Object.values(row));
-       });
-       stmt.finalize();
-       res.sendStatus(200);
+    db.run('COMMIT', (err) => {
+      if (err) { db.run('ROLLBACK'); return res.status(500).send(err.message); }
+      res.sendStatus(200);
     });
   });
 });

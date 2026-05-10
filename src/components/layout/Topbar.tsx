@@ -3,6 +3,7 @@ interface TopbarProps {
   sub: string;
   erStatus: string;
   erStatusLabel: string;
+  dbConnected?: boolean | null;
 }
 
 export function Topbar({ label, sub, erStatus, erStatusLabel }: TopbarProps) {

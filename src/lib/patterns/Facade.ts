@@ -13,13 +13,12 @@ export class AdmissionsFacade {
     addAlert: (a: Omit<Alert, 'ts'>) => void,
     addArchiveLog: (entry: any) => void
   ) {
-    // Subsystem 1: find first available bed
     const availableBed = beds.find(b => b.status === "available");
     if (!availableBed) {
       addAlert({ type: "warn", text: "Express Admit failed — no beds available" });
       return false;
     }
-    // Subsystem 2: build patient record (auto vitals for trauma)
+
     const p = new PatientProfileBuilder()
       .addName(patientName)
       .addAge(35).addGender("Unknown").addComplaint("Trauma — Express Admit")
@@ -27,21 +26,32 @@ export class AdmissionsFacade {
       .calculateTriageScore()
       .build();
     p.status = "admitted"; p.bedId = availableBed.id; p.triageLevel = 1;
-    
-    // Subsystem 3: assign bed
+
     setBeds(prev => prev.map(b => b.id === availableBed.id
       ? { ...b, status: "occupied", patientId: p.id, patientName: p.name, decorators: [], billingTotal: b.billingBase }
       : b));
-      
-    // Subsystem 4: add patient
+
     setPatients(prev => [...prev, p]);
-    
-    // Subsystem 5: broadcast Observer event
+
     eventBus.broadcast("emergency", { bedId: availableBed.id, patientName: p.name, level: 1 });
-    
-    // Subsystem 6: log
+
     addAlert({ type: "crit", text: `🚨 EXPRESS ADMIT: ${patientName} → Bed ${availableBed.id}` });
-    addArchiveLog({ type: "express", patient: p, bedId: availableBed.id, ts: new Date() });
+
+    // Fix: pass a proper ArchiveRecord shape, not { patient: p, ... }
+    addArchiveLog({
+      id: p.id,
+      name: p.name,
+      age: p.age,
+      gender: p.gender,
+      complaint: p.chiefComplaint,
+      triageLevel: p.triageLevel,
+      admittedAt: new Date().toLocaleString(),
+      dischargedAt: "—",
+      billing: p.billingBase || 500,
+      decorators: [],
+      type: "express",
+    });
+
     return true;
   }
 }
